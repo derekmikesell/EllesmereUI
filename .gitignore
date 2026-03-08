@@ -2,5 +2,15 @@
 Libs/
 EllesmereUIUnitFrames/Libs/
 
-# Kiro workspace files
+# General AI Agent Files / Folders
 .kiro/
+.claude/
+.gemini/
+.cline/
+.clinerules/
+.roo/
+.vibe/
+.opencode/
+.codex
+AGENT.md
+CLAUDE.md
