@@ -1472,7 +1472,7 @@ local function GetActionBarVisualSize(barKey)
         btnH = btnH + (ns.SHAPE_BTN_EXPAND or 10)
     end
     if shape == "cropped" then
-        btnH = btnH * 0.80
+        btnH = PP.CroppedHeight(btnH)
     end
 
     local isVert = (s.orientation == "vertical")

@@ -151,7 +151,7 @@ local SHAPE_INSETS = {
     hexagon = 17, portrait = 17, shield = 13, square = 17,
 }
 local SHAPE_ZOOM_DEFAULTS = {
-    none = 5.5, cropped = 2, square = 6.0, circle = 6.0, csquare = 6.0,
+    none = 5.5, cropped = 4, square = 6.0, circle = 6.0, csquare = 6.0,
     diamond = 6.0, hexagon = 6.0, portrait = 6.0, shield = 6.0,
 }
 ns.SHAPE_ZOOM_DEFAULTS = SHAPE_ZOOM_DEFAULTS
@@ -803,6 +803,7 @@ local BLIZZ_MOVABLE_OVERLAY = { -- Fixed overlay sizes for unlock mode movers (n
     EncounterBar      = { w = 150, h = 40 },
 }
 local barBaseSize = {}  -- [barKey] = { w, h } â€” original button size before any shape/scale
+ns.barBaseSize = barBaseSize
 
 -- Map bar config to action slot ranges
 -- These MUST match Blizzard's internal action slot assignments for each
@@ -2055,7 +2056,7 @@ local function ComputeBarLayout(key)
         btnW = btnW + SHAPE_BTN_EXPAND
         btnH = btnH + SHAPE_BTN_EXPAND
     end
-    if shape == "cropped" then btnH = btnH * 0.80 end
+    if shape == "cropped" then btnH = PP.CroppedHeight(btnH) end
     btnW = SnapForScale(btnW, barScale)
     btnH = SnapForScale(btnH, barScale)
     local stepW = btnW + padding
@@ -2146,7 +2147,7 @@ local function LayoutBar(key)
         btnH = btnH + SHAPE_BTN_EXPAND
     end
     if shape == "cropped" then
-        btnH = btnH * 0.80
+        btnH = PP.CroppedHeight(btnH)
     end
 
     -- Snap button dimensions for this bar's scale
@@ -2449,7 +2450,7 @@ local function ApplyButtonBorders(btn, on, cr, cg, cb, ca, sz, zoom)
     if zoom > 0 then
         local icon = btn.icon or btn.Icon
         if icon and icon.SetTexCoord and not (btn._eabShapeMask and btn._eabShapeMask:IsShown()) and not btn._eabCropped then
-            icon:SetTexCoord(zoom, 1 - zoom, zoom, 1 - zoom)
+            PP.SetIconTexCoords(icon, "none", zoom)
         end
     end
 end
@@ -2566,18 +2567,8 @@ local function ApplyShapeToButton(btn, shape, brdOn, brdR, brdG, brdB, brdA, brd
             icon:ClearAllPoints()
             icon:SetSize(0, 0)
             icon:SetAllPoints(btn)
-            if shape == "cropped" then
-                local z = (zoom or 0)
-                icon:SetTexCoord(z, 1 - z, z + 0.10, 1 - z - 0.10)
-                btn._eabCropped = true
-            else
-                btn._eabCropped = false
-                if zoom and zoom > 0 then
-                    icon:SetTexCoord(zoom, 1 - zoom, zoom, 1 - zoom)
-                else
-                    icon:SetTexCoord(0, 1, 0, 1)
-                end
-            end
+            PP.SetIconTexCoords(icon, shape, zoom or 0)
+            btn._eabCropped = (shape == "cropped")
         end
         -- Show square borders
         if btn._eabBorders then

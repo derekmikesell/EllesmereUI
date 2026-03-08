@@ -460,7 +460,7 @@ initFrame:SetScript("OnEvent", function(self)
                 scaledBtnH = scaledBtnH + shapeExp
             end
             if btnShape == "cropped" then
-                scaledBtnH = math.floor(scaledBtnH * 0.80 + 0.5)
+                scaledBtnH = PP.CroppedHeight(scaledBtnH)
             end
 
             local spacing = (barSettings and barSettings.buttonPadding) or 2
@@ -474,7 +474,7 @@ initFrame:SetScript("OnEvent", function(self)
             end
 
             -- Read zoom
-            local zoom = ((barSettings and barSettings.iconZoom) or 5.5) / 100
+            local zoom = (barSettings and barSettings.iconZoom) or 0.08
             local square = EAB_ADDON and EAB_ADDON.db and EAB_ADDON.db.profile.squareIcons
 
             -- Read border settings
@@ -528,7 +528,7 @@ initFrame:SetScript("OnEvent", function(self)
                     iconTex:SetTexture(realBtn.icon:GetTexture())
                     local z = zoom
                     if btnShape == "cropped" then
-                        iconTex:SetTexCoord(z, 1 - z, z + 0.10, 1 - z - 0.10)
+                        PP.SetIconTexCoords(iconTex, "cropped", z)
                     elseif z > 0 or square then
                         iconTex:SetTexCoord(z, 1 - z, z, 1 - z)
                     else
@@ -3275,7 +3275,7 @@ initFrame:SetScript("OnEvent", function(self)
             local iconH = iconSize
             local pvShape = bd.iconShape or "none"
             if pvShape == "cropped" then
-                iconH = math.floor(iconSize * 0.80 + 0.5)
+                iconH = PP.CroppedHeight(iconSize)
             end
             local spacing  = bd.spacing or 2
             local zoom     = bd.iconZoom or 0.08
@@ -4473,10 +4473,10 @@ initFrame:SetScript("OnEvent", function(self)
                   ns.BuildAllCDMBars(); Refresh(); UpdateCDMPreview()
               end },
             { type="slider", text="Icon Zoom",
-              min=0, max=0.20, step=0.01,
-              getValue=function() return BD().iconZoom or 0.08 end,
+              min=0, max=20, step=0.5,
+              getValue=function() return (BD().iconZoom or 0.08) * 100 end,
               setValue=function(v)
-                  BD().iconZoom = v
+                  BD().iconZoom = v / 100
                   ns.RefreshCDMIconAppearance(BD().key); Refresh(); UpdateCDMPreview()
               end });  y = y - h
 

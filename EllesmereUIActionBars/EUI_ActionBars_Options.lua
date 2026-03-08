@@ -388,11 +388,18 @@ initFrame:SetScript("OnEvent", function(self)
         -- Our custom bar frame (may be nil during first build before bars are created)
         local barFrame = _G["EABBar_" .. barKey]
 
-        -- Read the real button size from the first actual button.
-        -- Round to nearest integer to eliminate floating-point noise.
-        local btn1 = _G[barInfo.buttonPrefix .. "1"]
-        local realBtnW = math.floor((btn1 and btn1:GetWidth() or 0) + 0.5)
-        local realBtnH = math.floor((btn1 and btn1:GetHeight() or 0) + 0.5)
+        -- Read the original (uncropped) button size from the base size table,
+        -- falling back to the live button if not yet captured.
+        local base = ns.barBaseSize[barKey]
+        local realBtnW, realBtnH
+        if base then
+            realBtnW = base.w
+            realBtnH = base.h
+        else
+            local btn1 = _G[barInfo.buttonPrefix .. "1"]
+            realBtnW = (btn1 and btn1:GetWidth() or 0)
+            realBtnH = (btn1 and btn1:GetHeight() or 0)
+        end
         if realBtnW < 1 then realBtnW = 36 end
         if realBtnH < 1 then realBtnH = 36 end
 
@@ -580,7 +587,7 @@ initFrame:SetScript("OnEvent", function(self)
             end
             -- Shrink button height for "cropped" mode (10% top + 10% bottom)
             if btnShape == "cropped" then
-                scaledBtnH = SnapS(scaledBtnH * 0.80, barScale)
+                scaledBtnH = SnapS(PP.CroppedHeight(scaledBtnH), barScale)
             end
 
             local scaledPad  = SnapS(spacing * (self._blizzEditScale or 1) * barScale, barScale)
@@ -648,8 +655,7 @@ initFrame:SetScript("OnEvent", function(self)
                         if square or zoom > 0 or btnShape == "cropped" then
                             local z = zoom
                             if btnShape == "cropped" then
-                                -- Preserve aspect ratio: trim top/bottom by 10%
-                                icon:SetTexCoord(z, 1 - z, z + 0.10, 1 - z - 0.10)
+                                PP.SetIconTexCoords(icon, "cropped", z)
                             else
                                 icon:SetTexCoord(z, 1 - z, z, 1 - z)
                             end
@@ -666,7 +672,10 @@ initFrame:SetScript("OnEvent", function(self)
                             local _, ct2 = UnitClass("player")
                             if ct2 then local cc2 = RAID_CLASS_COLORS[ct2]; if cc2 then cr, cg, cb = cc2.r, cc2.g, cc2.b end end
                         end
-                        local sz = SnapS(brdSize, barScale)
+                        -- Use PP.perfect to get exact physical-pixel sizing,
+                        -- avoiding SnapS rounding that collapses thin/normal at low scales.
+                        local ppPerfect = EllesmereUI.PP and EllesmereUI.PP.perfect or (768 / select(2, GetPhysicalScreenSize()))
+                        local sz = brdSize * ppPerfect / self:GetEffectiveScale()
 
                         bT:SetColorTexture(cr, cg, cb, ca)
                         UnsnapTex(bT)
@@ -772,7 +781,7 @@ initFrame:SetScript("OnEvent", function(self)
                         if icon.SetTexCoord then
                             local z = zoom
                             if btnShape == "cropped" then
-                                icon:SetTexCoord(z, 1 - z, z + 0.10, 1 - z - 0.10)
+                                PP.SetIconTexCoords(icon, "cropped", z)
                             else
                                 if z > 0 or square then
                                     icon:SetTexCoord(z, 1 - z, z, 1 - z)

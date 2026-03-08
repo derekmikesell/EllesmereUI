@@ -68,7 +68,7 @@ local CDM_SHAPE_ICON_EXPAND_OFFSETS = {
     portrait = 2, shield = 2, square = 4,
 }
 local CDM_SHAPE_ZOOM_DEFAULTS = {
-    none = 0.08, cropped = 0.05, square = 0.06, circle = 0.06, csquare = 0.06,
+    none = 0.08, cropped = 0.04, square = 0.06, circle = 0.06, csquare = 0.06,
     diamond = 0.06, hexagon = 0.06, portrait = 0.06, shield = 0.06,
 }
 local CDM_SHAPE_EDGE_SCALES = {
@@ -2677,7 +2677,7 @@ LayoutCDMBar = function(barKey)
     local iconH = iconW
     local shape = barData.iconShape or "none"
     if shape == "cropped" then
-        iconH = SnapForScale(math.floor((barData.iconSize or 36) * 0.80 + 0.5), barScale)
+        iconH = SnapForScale(PP.CroppedHeight(barData.iconSize or 36), barScale)
     end
     local spacing = SnapForScale(barData.spacing or 2, barScale)
     local grow = frame._mouseGrow or barData.growDirection or "RIGHT"
@@ -2817,9 +2817,9 @@ local function CreateCDMIcon(barKey, index)
 
     -- Icon texture
     local tex = icon:CreateTexture(nil, "ARTWORK")
-    PP.Point(tex, "TOPLEFT", icon, "TOPLEFT", borderSize, -borderSize)
-    PP.Point(tex, "BOTTOMRIGHT", icon, "BOTTOMRIGHT", -borderSize, borderSize)
-    tex:SetTexCoord(zoom, 1 - zoom, zoom, 1 - zoom)
+    PP.AnchorIconTexture(tex, icon, "none", borderSize)
+    PP.SetIconTexCoords(tex, "none", zoom)
+    PP.DisablePixelSnap(tex)
     icon._tex = tex
 
     -- Cooldown overlay
@@ -2980,14 +2980,8 @@ ApplyShapeToCDMIcon = function(icon, shape, barData)
 
         -- Restore icon texture coords
         if icon._tex then
-            icon._tex:ClearAllPoints()
-            PP.Point(icon._tex, "TOPLEFT", icon, "TOPLEFT", borderSz, -borderSz)
-            PP.Point(icon._tex, "BOTTOMRIGHT", icon, "BOTTOMRIGHT", -borderSz, borderSz)
-            if shape == "cropped" then
-                icon._tex:SetTexCoord(zoom, 1 - zoom, zoom + 0.10, 1 - zoom - 0.10)
-            else
-                icon._tex:SetTexCoord(zoom, 1 - zoom, zoom, 1 - zoom)
-            end
+            PP.AnchorIconTexture(icon._tex, icon, shape, borderSz)
+            PP.SetIconTexCoords(icon._tex, shape, zoom)
         end
 
         -- Restore cooldown
@@ -3767,14 +3761,13 @@ local function RefreshCDMIconAppearance(barKey)
     if barScale < 0.1 then barScale = 1.0 end
     local borderSize = barData.borderSize or 1
     local zoom = barData.iconZoom or 0.08
+    local shape = barData.iconShape or "none"
 
     for _, icon in ipairs(icons) do
         -- Update texture zoom
         if icon._tex then
-            icon._tex:ClearAllPoints()
-            PP.Point(icon._tex, "TOPLEFT", icon, "TOPLEFT", borderSize, -borderSize)
-            PP.Point(icon._tex, "BOTTOMRIGHT", icon, "BOTTOMRIGHT", -borderSize, borderSize)
-            icon._tex:SetTexCoord(zoom, 1 - zoom, zoom, 1 - zoom)
+            PP.AnchorIconTexture(icon._tex, icon, shape, borderSize)
+            PP.SetIconTexCoords(icon._tex, shape, zoom)
         end
         -- Update cooldown inset
         if icon._cooldown then
@@ -5522,7 +5515,7 @@ RegisterCDMUnlockElements = function()
                     local iW = SnapForScale(bd.iconSize or 36, bScale)
                     local iH = iW
                     if (bd.iconShape or "none") == "cropped" then
-                        iH = SnapForScale(math.floor((bd.iconSize or 36) * 0.80 + 0.5), bScale)
+                        iH = SnapForScale(PP.CroppedHeight(bd.iconSize or 36), bScale)
                     end
                     local sp = SnapForScale(bd.spacing or 2, bScale)
                     local rows = bd.numRows or 1

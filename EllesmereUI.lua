@@ -717,6 +717,38 @@ do
     end
 
     ---------------------------------------------------------------------------
+    --  Cropped icon shape constants and helpers
+    ---------------------------------------------------------------------------
+    PP.CROPPED_HEIGHT_FACTOR = 0.80
+    PP.CROPPED_TEXCOORD_INSET = 0.10
+
+    function PP.CroppedHeight(height)
+        return math.floor(height * PP.CROPPED_HEIGHT_FACTOR + 0.5)
+    end
+
+    function PP.SetIconTexCoords(tex, shape, zoom)
+        if shape == "cropped" then
+            tex:SetTexCoord(zoom, 1 - zoom,
+                            zoom + PP.CROPPED_TEXCOORD_INSET,
+                            1 - zoom - PP.CROPPED_TEXCOORD_INSET)
+        elseif zoom > 0 then
+            tex:SetTexCoord(zoom, 1 - zoom, zoom, 1 - zoom)
+        else
+            tex:SetTexCoord(0, 1, 0, 1)
+        end
+    end
+
+    function PP.AnchorIconTexture(tex, frame, shape, borderSize)
+        tex:ClearAllPoints()
+        if shape == "cropped" then
+            tex:SetAllPoints(frame)
+        else
+            PP.Point(tex, "TOPLEFT", frame, "TOPLEFT", borderSize, -borderSize)
+            PP.Point(tex, "BOTTOMRIGHT", frame, "BOTTOMRIGHT", -borderSize, borderSize)
+        end
+    end
+
+    ---------------------------------------------------------------------------
     --  DisablePixelSnap — prevent WoW's engine from rounding texture
     --  coordinates to the nearest pixel, which causes blurry edges on
     --  sub-pixel-sized elements.
@@ -1087,6 +1119,13 @@ do
     PanelPP.UpdateBorder  = PP.UpdateBorder
     PanelPP.HideBorder    = PP.HideBorder
     PanelPP.ShowBorder    = PP.ShowBorder
+
+    -- Cropped icon helpers (shared with PP)
+    PanelPP.CROPPED_HEIGHT_FACTOR   = PP.CROPPED_HEIGHT_FACTOR
+    PanelPP.CROPPED_TEXCOORD_INSET  = PP.CROPPED_TEXCOORD_INSET
+    PanelPP.CroppedHeight           = PP.CroppedHeight
+    PanelPP.SetIconTexCoords        = PP.SetIconTexCoords
+    PanelPP.AnchorIconTexture       = PP.AnchorIconTexture
 end
 
 -- File-level PanelPP reference for panel layout code outside the do block
