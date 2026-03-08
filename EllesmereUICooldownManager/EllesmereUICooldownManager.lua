@@ -213,6 +213,9 @@ local _tickBlizzChildCache = {}    -- [overrideSpellID] = blizzChild, for direct
 local _tickBlizzAllChildCache = {} -- [resolvedSid] = blizzChild, for all CDM children (used by custom bars)
 local _tickBlizzBuffChildCache = {} -- [resolvedSid] = blizzChild, only from BuffIcon/BuffBar viewers
 local _tickBlizzCDChildCache   = {} -- [resolvedSid] = blizzChild, only from Essential/Utility viewers
+local _tickBlizzMultiChildCache = {} -- [baseSid] = { ch1, ch2, ... } when multiple CDM children share a base spellID (e.g. Eclipse)
+local _activeMultiScratch = {}      -- reusable scratch table for active multi-child filtering (avoids per-tick allocation)
+local _companionChildScratch = {}   -- reusable scratch table for companion child mapping (avoids per-tick allocation)
 
 -- Separate tables keyed by child frame reference — avoids reading tainted fields on Blizzard-owned frames.
 -- ch.isActive and ch._ecmeDurObj etc. are tainted secret values; we track state in our own tables instead.
@@ -4076,7 +4079,43 @@ local function UpdateTrackedBarIcons(barKey)
     -- Build combined spell list: tracked + extras
     -- For extras, substitute any racial spellID from another race with this character's racial.
     local combined = {}
-    for _, sid in ipairs(tracked) do combined[#combined + 1] = sid end
+    local isBuffBarForOvr = (barKey == "buffs" or barData.barType == "buffs")
+    -- companionChild[i] = specific CDM child for multi-child companion icons.
+    -- When a single tracked spellID has multiple CDM children (e.g. Eclipse
+    -- has two children with different auraInstanceIDs for Lunar and Solar),
+    -- each child gets its own icon entry.  Uses module-level scratch tables
+    -- (wiped here) to avoid per-tick allocation / GC pressure.
+    wipe(_companionChildScratch)
+    local hasCompanions = false
+    for _, sid in ipairs(tracked) do
+        combined[#combined + 1] = sid
+        if isBuffBarForOvr then
+            local multiChildren = _tickBlizzMultiChildCache[sid]
+            if multiChildren then
+                -- Collect only active (shown) children to avoid showing inactive eclipses
+                -- and to avoid tainted Icon textures from inactive CDM children.
+                -- Use :IsShown() instead of .isActive to avoid WoW taint on secure properties.
+                wipe(_activeMultiScratch)
+                local activeCount = 0
+                for mi = 1, #multiChildren do
+                    local mc = multiChildren[mi]
+                    if mc:IsShown() then
+                        activeCount = activeCount + 1
+                        _activeMultiScratch[activeCount] = mc
+                    end
+                end
+                if activeCount > 0 then
+                    hasCompanions = true
+                    _companionChildScratch[#combined] = _activeMultiScratch[1]
+                    for ci = 2, activeCount do
+                        combined[#combined + 1] = sid
+                        _companionChildScratch[#combined] = _activeMultiScratch[ci]
+                    end
+                end
+            end
+        end
+    end
+    local companionChild = hasCompanions and _companionChildScratch or nil
     local extras = barData.extraSpells
     if extras then
         for _, sid in ipairs(extras) do
@@ -4092,6 +4131,22 @@ local function UpdateTrackedBarIcons(barKey)
     while #icons < #combined do
         local newIcon = CreateCDMIcon(barKey, #icons + 1)
         icons[#icons + 1] = newIcon
+        -- Apply pending cooldown font immediately for dynamically created icons
+        -- (the batch applicator in BuildAllCDMBars only runs once at setup).
+        if newIcon._pendingFontPath and newIcon._cooldown then
+            C_Timer.After(0, function()
+                if newIcon._pendingFontPath and newIcon._cooldown then
+                    for ri = 1, newIcon._cooldown:GetNumRegions() do
+                        local region = select(ri, newIcon._cooldown:GetRegions())
+                        if region and region.GetObjectType and region:GetObjectType() == "FontString" then
+                            SetBlizzCDMFont(region, newIcon._pendingFontPath, newIcon._pendingFontSize)
+                            break
+                        end
+                    end
+                    newIcon._pendingFontPath = nil; newIcon._pendingFontSize = nil
+                end
+            end)
+        end
     end
 
     for i, spellID in ipairs(combined) do
@@ -4176,7 +4231,6 @@ local function UpdateTrackedBarIcons(barKey)
                     resolvedID = overrideID
                 end
             end
-            local isBuffBarForOvr = (barKey == "buffs" or barData.barType == "buffs")
             -- Second-level runtime override from Blizzard CDM children cache
             -- Skip on buff bars: show the base spell's state, not the temporary
             -- replacement that appears while the spell is on cooldown.
@@ -4217,6 +4271,10 @@ local function UpdateTrackedBarIcons(barKey)
                 end
             end
 
+            -- Companion child for multi-child buff spells (e.g. Eclipse).
+            -- When set, this specific CDM child is used instead of cache lookups.
+            local assignedChild = companionChild and companionChild[i]
+
             -- Cache spell icon texture
             local texID = _spellIconCache[resolvedID]
             if not texID then
@@ -4226,10 +4284,19 @@ local function UpdateTrackedBarIcons(barKey)
                     _spellIconCache[resolvedID] = texID
                 end
             end
+            -- Multi-child buff icons: set the texture directly from the child's
+            -- Icon widget to avoid WoW taint on secret CDM child properties.
+            -- SetTexture() is a sink that accepts secret values; we call it
+            -- unconditionally because secret textures cannot be compared.
+            if assignedChild and assignedChild.Icon and assignedChild.Icon.GetTexture then
+                ourIcon._tex:SetTexture(assignedChild.Icon:GetTexture())
+                ourIcon._lastTex = 0 -- force normal-path refresh when companion goes away
+            end
+
             local overrideTex = (barKey == "buffs") and BUFF_ICON_OVERRIDES[spellID]
             local effectiveTex = overrideTex or texID
             if effectiveTex then
-                if effectiveTex ~= ourIcon._lastTex then
+                if not assignedChild and effectiveTex ~= ourIcon._lastTex then
                     ourIcon._tex:SetTexture(effectiveTex)
                     ourIcon._lastTex = effectiveTex
                 end
@@ -4262,7 +4329,9 @@ local function UpdateTrackedBarIcons(barKey)
                 local skipCDDisplay = false
                 local hasRuntimeOverride = resolvedID ~= spellID and not isBuffBarForOvr
                 do
-                    local blizzChild = _tickBlizzAllChildCache[resolvedID]
+                    -- Use assigned companion child when available (multi-child
+                    -- buff spells like Eclipse); otherwise fall back to cache.
+                    local blizzChild = assignedChild or _tickBlizzAllChildCache[resolvedID]
                     if not blizzChild then
                         local cdID = _spellToCooldownID[resolvedID] or _spellToCooldownID[spellID]
                         if cdID then
@@ -4333,7 +4402,7 @@ local function UpdateTrackedBarIcons(barKey)
                                 if IsBufChildCooldownActive(blzBufCh) then blzFbActive = true end
                             end
                             if blzFbActive then
-                                local blzFb = _tickBlizzAllChildCache[resolvedID] or _tickBlizzAllChildCache[spellID]
+                                local blzFb = assignedChild or _tickBlizzAllChildCache[resolvedID] or _tickBlizzAllChildCache[spellID]
                                 auraHandled = true
                                 skipCDDisplay = true
                                 -- Use the cached DurationObject captured by our hook
@@ -4375,7 +4444,7 @@ local function UpdateTrackedBarIcons(barKey)
                 end
 
                 -- Stack count
-                local blizzChild = _tickBlizzAllChildCache[resolvedID]
+                local blizzChild = assignedChild or _tickBlizzAllChildCache[resolvedID]
                 if not blizzChild then
                     local cdID = _spellToCooldownID[resolvedID] or _spellToCooldownID[spellID]
                     if cdID then blizzChild = FindCDMChildByCooldownID(cdID) end
@@ -4396,7 +4465,7 @@ local function UpdateTrackedBarIcons(barKey)
                     local isActive = _tickBlizzActiveCache[resolvedID] or _tickBlizzActiveCache[spellID]
                     -- Fallback: check if the buff-viewer child's cooldown is running
                     if not isActive then
-                        local blzBufCh = _tickBlizzBuffChildCache[resolvedID] or _tickBlizzBuffChildCache[spellID]
+                        local blzBufCh = assignedChild or _tickBlizzBuffChildCache[resolvedID] or _tickBlizzBuffChildCache[spellID]
                                       or _tickBlizzAllChildCache[resolvedID] or _tickBlizzAllChildCache[spellID]
                         if IsBufChildCooldownActive(blzBufCh) then isActive = true end
                     end
@@ -4427,8 +4496,12 @@ local function UpdateTrackedBarIcons(barKey)
         ic:Hide()
     end
 
-    -- Only re-layout when visible count changes
-    if visCount ~= prevCount then
+    -- Re-layout when visible count changes, or when companion icons are/were
+    -- active (dynamic combined list can change composition without changing
+    -- visible count, leaving newly-created icons unpositioned).
+    local needsLayout = visCount ~= prevCount or hasCompanions or frame._hadCompanions
+    frame._hadCompanions = hasCompanions
+    if needsLayout then
         frame._prevVisibleCount = visCount
         LayoutCDMBar(barKey)
     end
@@ -4455,6 +4528,7 @@ local function UpdateAllCDMBars(dt)
     wipe(_tickBlizzAllChildCache)
     wipe(_tickBlizzBuffChildCache)
     wipe(_tickBlizzCDChildCache)
+    wipe(_tickBlizzMultiChildCache)
     do
         local viewers = { "EssentialCooldownViewer", "UtilityCooldownViewer", "BuffIconCooldownViewer", "BuffBarCooldownViewer" }
         for _, vName in ipairs(viewers) do
@@ -4478,6 +4552,22 @@ local function UpdateAllCDMBars(dt)
                                 -- to get auraInstanceID directly from the frame, which is non-secret)
                                 local resolvedSid = ResolveInfoSpellID(info)
                                 if resolvedSid and resolvedSid > 0 then
+                                    -- Multi-child cache: track children that share a base spellID
+                                    -- within the SAME viewer (e.g. Eclipse has two BuffIcon children).
+                                    -- Cross-viewer duplicates (BuffIcon + BuffBar for same spell)
+                                    -- must not trigger this, as different viewers have different
+                                    -- child structures (BuffBar Icon is a Frame, not a Texture).
+                                    local baseSid = info.spellID
+                                    if baseSid and baseSid > 0 then
+                                        local prevChild = _tickBlizzAllChildCache[resolvedSid]
+                                        if prevChild and baseSid == resolvedSid
+                                                and prevChild.viewerFrame == ch.viewerFrame then
+                                            if not _tickBlizzMultiChildCache[baseSid] then
+                                                _tickBlizzMultiChildCache[baseSid] = { prevChild }
+                                            end
+                                            _tickBlizzMultiChildCache[baseSid][#_tickBlizzMultiChildCache[baseSid] + 1] = ch
+                                        end
+                                    end
                                     _tickBlizzAllChildCache[resolvedSid] = ch
                                     -- Buff-viewer-only child cache (for IsShown fallback on
                                     -- summon-type spells that have no aura)
@@ -5134,7 +5224,7 @@ function ns.GetCDMSpellsForBar(barKey)
                     if not skip then
                         local name = C_Spell.GetSpellName(sid)
                         local tex = C_Spell.GetSpellTexture(sid)
-                        if name and tex then
+                        if name and (tex or cat == 2 or cat == 3) then
                             seenSpellID[sid] = true
                             local isConflict = SpellConflictsWithOtherBar(sid, barKey)
                             spells[#spells + 1] = {
