@@ -5562,11 +5562,12 @@ function EAB:FinishSetup()
     end)
 
     self:RegisterEvent("UPDATE_BONUS_ACTIONBAR", function()
-        -- Skyriding mount/dismount: re-apply scale
+        -- Skyriding mount/dismount: re-apply scale and layout.
         C_Timer_After(0.1, function()
             if InCombatLockdown() then return end
             for _, info in ipairs(BAR_CONFIG) do
                 self:ApplyScaleForBar(info.key)
+                LayoutBar(info.key)
             end
         end)
     end)

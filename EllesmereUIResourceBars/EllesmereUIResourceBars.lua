@@ -1765,22 +1765,15 @@ local function UpdateSecondaryResource()
         local numPips = 6
         local totalW = sp.pipWidth or 214
         local pipSp = sp.pipSpacing or 1
-        local snappedSp, baseW, remainderPx, onePixel = CalcPipGeometry(totalW, numPips, pipSp, secondaryFrame)
+        local slots = CalcPipGeometry(totalW, numPips, pipSp, secondaryFrame)
 
         for pos = 1, totalRunes do
             local runeIdx = _runeOrder[pos]
             local rf = runeFrames[runeIdx]
             if rf and rf:IsShown() then
-                -- x position accumulates across slots (no inner loop)
-                local w = baseW + (pos <= remainderPx and onePixel or 0)
-                local x0 = 0
-                if pos > 1 then
-                    -- Sum widths of all previous slots + snapped spacing
-                    x0 = baseW * (pos - 1) + snappedSp * (pos - 1)
-                    -- Add extra physical pixels for remainder distribution
-                    local extraPips = math.min(pos - 1, remainderPx)
-                    x0 = x0 + extraPips * onePixel
-                end
+                local slot = slots[pos]
+                local x0 = slot.x0
+                local w  = slot.x1 - slot.x0
                 rf:ClearAllPoints()
                 rf:SetPoint("LEFT", secondaryFrame, "LEFT", x0, 0)
                 rf:SetWidth(w)
