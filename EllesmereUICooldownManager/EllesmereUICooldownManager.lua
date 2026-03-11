@@ -4217,6 +4217,14 @@ local function UpdateTrackedBarIcons(barKey)
                 end
             end
 
+            -- Dynamic icon from Blizzard CDM child for buff bars.
+            -- Spells like Heating Up -> Hot Streak share one CDM child whose
+            -- Icon texture updates dynamically; read it instead of the static cache.
+            local blizzBuffChild = isBuffBarForOvr
+                and (_tickBlizzBuffChildCache[resolvedID] or _tickBlizzBuffChildCache[spellID]
+                     or _tickBlizzAllChildCache[resolvedID] or _tickBlizzAllChildCache[spellID])
+                or nil
+
             -- Cache spell icon texture
             local texID = _spellIconCache[resolvedID]
             if not texID then
@@ -4227,9 +4235,17 @@ local function UpdateTrackedBarIcons(barKey)
                 end
             end
             local overrideTex = (barKey == "buffs") and BUFF_ICON_OVERRIDES[spellID]
+            -- For buff bars, prefer the CDM child's dynamic Icon texture so
+            -- aura-driven icon changes (Heating Up -> Hot Streak) are reflected.
+            -- SetTexture() is a sink that accepts secret values; call it
+            -- unconditionally because secret textures cannot be compared.
+            if blizzBuffChild and not overrideTex and blizzBuffChild.Icon and blizzBuffChild.Icon.GetTexture then
+                ourIcon._tex:SetTexture(blizzBuffChild.Icon:GetTexture())
+                ourIcon._lastTex = 0  -- force static-path refresh when child goes away
+            end
             local effectiveTex = overrideTex or texID
             if effectiveTex then
-                if effectiveTex ~= ourIcon._lastTex then
+                if (not blizzBuffChild or overrideTex) and effectiveTex ~= ourIcon._lastTex then
                     ourIcon._tex:SetTexture(effectiveTex)
                     ourIcon._lastTex = effectiveTex
                 end
