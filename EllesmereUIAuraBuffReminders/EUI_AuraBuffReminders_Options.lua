@@ -122,7 +122,8 @@ initFrame:SetScript("OnEvent", function(self)
         local AURAS = _G._EABR_AURAS or {}
         local beaconAdded = false
         for _, aura in ipairs(AURAS) do
-            if aura.class == playerClass and Known(aura.castSpell) then
+            if aura.class == playerClass and Known(aura.castSpell)
+               and not (aura.notIfKnown and Known(aura.notIfKnown)) then
                 if au and au.enabled and au.enabled[aura.key] then
                     local specOk = true
                     if aura.specs then

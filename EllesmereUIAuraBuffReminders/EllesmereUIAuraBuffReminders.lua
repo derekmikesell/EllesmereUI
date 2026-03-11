@@ -570,7 +570,7 @@ local AURAS = {
       check="playerSelfCast", combatOk=false },
     -- Beacon of Light: non-secret (53563) must verify source is player
     { key="bol",        class="PALADIN", name="Beacon of Light",   castSpell=53563,  buffIDs={53563},
-      check="ownOnRaid", combatOk=true },
+      check="ownOnRaid", combatOk=true, notIfKnown=200025 },
     -- Beacon of Faith: non-secret (156910) must verify source is player
     { key="bof",        class="PALADIN", name="Beacon of Faith",   castSpell=156910, buffIDs={156910},
       check="ownOnRaid", combatOk=true, requireInstanceGroup=true },
@@ -1443,7 +1443,8 @@ local function CollectAuras(missing, playerClass, specID, inInstance, inCombat)
 local au = db.profile.auras
 if inInstance or au.showNonInstanced then
     for _, aura in ipairs(AURAS) do
-        if au.enabled[aura.key] and (aura.class == playerClass) and Known(aura.castSpell) then
+        if au.enabled[aura.key] and (aura.class == playerClass) and Known(aura.castSpell)
+           and not (aura.notIfKnown and Known(aura.notIfKnown)) then
             -- Spec check
             local specOk = true
             if aura.specs then
